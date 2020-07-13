@@ -11,7 +11,8 @@ import (
 
 type Request struct {
 	Query interface{}
-	WWWFormUrlencoded interface{}
+	FormUrlencoded interface{}
+	FormData interface{}
 	// url.Values{}
 	Header interface{}
 	JSON interface{}

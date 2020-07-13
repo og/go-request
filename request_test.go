@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -251,3 +252,27 @@ func TestHeader(t *testing.T) {
 // 	c.Send(data.Method, url(data.Path), greq.Request{})
 // 	as.Equal()
 // }
+
+func TestFormData(t *testing.T) {
+	as := gtest.NewAS(t)
+	c := greq.New(greq.Config{})
+	data := testserver.Data{
+		Method: "POST",
+		Path:   "/TestFormData",
+		Func:  func(w http.ResponseWriter, r *http.Request) {
+			testserver.Send(w, greq.HttpMessage(*r))
+		},
+	}
+	testserver.Add(data)
+	form := struct {
+		Name string `form:"name"`
+		File *os.File
+	}{
+		Name: "nimo",
+		File: ge.File(os.OpenFile("mock/json-1.json",os.O_RDONLY,  0666)),
+	}
+	resp := c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
+		FormData: form,
+	})
+	as.Equal(resp.String(), "")
+}

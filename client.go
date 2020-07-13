@@ -2,11 +2,15 @@ package greq
 
 import (
 	"bytes"
+	"fmt"
 	ge "github.com/og/x/error"
 	core_ogjson "github.com/og/x/json/core"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"reflect"
 	"strings"
 )
 
@@ -38,19 +42,48 @@ func (c Client) Send(method Method, URL string, request Request) (resp Response)
 		bodyReader = bytes.NewReader(b)
 	}
 	// x-www-form-urlencoded
-	if wwwFormUrlencoded := request.WWWFormUrlencoded; wwwFormUrlencoded != nil {
+	if wwwFormUrlencoded := request.FormUrlencoded; wwwFormUrlencoded != nil {
 		urlValues := url.Values{}
-		for key, values := range structToMap(request.WWWFormUrlencoded, "form") {
+		for key, values := range structToMap(request.FormUrlencoded, "form") {
 			for _, value := range values {
 				urlValues.Add(key, value)
 			}
 		}
 		bodyReader = strings.NewReader(urlValues.Encode())
 	}
+	var formWriter *multipart.Writer
+	if formData := request.FormData; formData != nil {
+		rForm := reflect.ValueOf(formData)
+		rFormType := rForm.Type()
+		bufferData := bytes.NewBuffer(nil)
+		formWriter = multipart.NewWriter(bufferData)
+		for i:=0;i<rFormType.NumField();i++ {
+			itemType := rFormType.Field(i)
+			itemValue := rForm.Field(i)
+			fieldName := ""
+			if value, has := itemType.Tag.Lookup("form") ; has {
+				fieldName = value
+			} else {
+				fieldName = itemType.Name
+			}
+			if itemValue.Type().String() == "*os.File" {
+				file := itemValue.Interface().(*os.File)
+				fileW, err := formWriter.CreateFormFile(fieldName, file.Name())
+				_, err = io.Copy(fileW, file) ; ge.Check(err)
+			} else {
+				err := formWriter.WriteField(fieldName, fmt.Sprintf("%v", itemValue.Interface())) ; ge.Check(err)
+			}
+		}
+		ge.Check(formWriter.Close())
+		bodyReader = bufferData
+	}
 	httpReq, err := http.NewRequest(string(method), URL, bodyReader) ; ge.Check(err)
 	// x-www-form-urlencoded
-	if wwwFormUrlencoded := request.WWWFormUrlencoded; wwwFormUrlencoded != nil {
+	if wwwFormUrlencoded := request.FormUrlencoded; wwwFormUrlencoded != nil {
 		httpReq.Header.Add("Content-Type", "application/x-www-form-urlencoded")
+	}
+	if request.FormData != nil {
+		httpReq.Header.Add("Content-Type", formWriter.FormDataContentType())
 	}
 	// header
 	if header := request.Header; header != nil {
