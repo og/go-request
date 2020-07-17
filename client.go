@@ -51,29 +51,33 @@ func (c Client) Send(method Method, URL string, request Request) (resp Response)
 		}
 		bodyReader = strings.NewReader(urlValues.Encode())
 	}
+	// form data
 	var formWriter *multipart.Writer
 	if formData := request.FormData; formData != nil {
-		rForm := reflect.ValueOf(formData)
-		rFormType := rForm.Type()
+
 		bufferData := bytes.NewBuffer(nil)
 		formWriter = multipart.NewWriter(bufferData)
-		for i:=0;i<rFormType.NumField();i++ {
-			itemType := rFormType.Field(i)
-			itemValue := rForm.Field(i)
+		scan(formData, func(value reflect.Value, field reflect.StructField) {
 			fieldName := ""
-			if value, has := itemType.Tag.Lookup("form") ; has {
+			if value, has := field.Tag.Lookup("form") ; has {
 				fieldName = value
 			} else {
-				fieldName = itemType.Name
+				fieldName = field.Name
 			}
-			if itemValue.Type().String() == "*os.File" {
-				file := itemValue.Interface().(*os.File)
+			if field.Type.String() == "*os.File" {
+				file := value.Interface().(*os.File)
 				fileW, err := formWriter.CreateFormFile(fieldName, file.Name())
 				_, err = io.Copy(fileW, file) ; ge.Check(err)
-			} else {
-				err := formWriter.WriteField(fieldName, fmt.Sprintf("%v", itemValue.Interface())) ; ge.Check(err)
+				return
 			}
-		}
+			if field.Type.Kind() == reflect.Struct {
+				return
+			}
+			if field.Type.Kind() == reflect.Slice {
+				return
+			}
+			err := formWriter.WriteField(fieldName, fmt.Sprintf("%v", value.Interface())) ; ge.Check(err)
+		})
 		ge.Check(formWriter.Close())
 		bodyReader = bufferData
 	}

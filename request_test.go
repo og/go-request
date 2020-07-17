@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,6 +23,17 @@ func init () {
 }
 func url(path string) string {
 	return "http://127.0.0.1:2421" + path
+}
+func formatMessage(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, "\n", "\r\n")
+	s = strings.TrimSpace(s)
+	return s
+}
+func formatFormDataMessage(respString string) string {
+	rBoundary := regexp.MustCompile(`boundary=.{60}`)
+	boundary := strings.Replace(rBoundary.FindString(respString), "boundary=", "", 1)
+	return strings.ReplaceAll(respString, boundary, "testboundarytestboundarytestboundarytestboundarytestboundary")
 }
 func ExampleClient_Get() {
 	c := greq.New(greq.Config{})
@@ -54,12 +66,7 @@ func ExampleClient_Post() {
 	resp := c.Post("https://raw.githubusercontent.com/og/go-request/master/mock/json-1.json", greq.Request{})
 	resp.JSON(&data)
 }
-func formatMessage(s string) string {
-	s = strings.TrimSpace(s)
-	s = strings.ReplaceAll(s, "\n", "\r\n")
-	s = strings.TrimSpace(s)
-	return s
-}
+
 func TestGet(t *testing.T) {
 	as := gtest.NewAS(t)
 	c := greq.New(greq.Config{})
@@ -232,29 +239,44 @@ func TestHeader(t *testing.T) {
 		Header: header,
 	}).String(), formatMessage(`{"Accept-Encoding":["gzip"],"Age":["1"],"Apikey":["password"],"Bool":["true"],"Float":["1.2"],"List":["a","c"],"User":["nimoc"],"User-Agent":["Go-http-client/1.1"]}`))
 }
-// func TestWWWFormUrlencoded(t *testing.T) {
-// 	as := gtest.NewAS(t)
-// 	c := greq.New(greq.Config{})
-// 	data := testserver.Data{
-// 		Method: "GET",
-// 		Path:   "/TestWWWFormUrlencoded",
-// 		Func: func(w http.ResponseWriter, r *http.Request) {
-// 			testserver.Send(w, greq.HttpMessage(*r))
-// 		},
-// 	}
-// 	testserver.Add(data)
-// 	wwwForm := struct {
-// 		 Name string `form:"name"`
-// 		 Age int `form:"age"`
-// 	}{
-//
-// 	}
-// 	c.Send(data.Method, url(data.Path), greq.Request{})
-// 	as.Equal()
-// }
+func TestWWWFormUrlencoded(t *testing.T) {
+	as := gtest.NewAS(t)
+	c := greq.New(greq.Config{})
+	data := testserver.Data{
+		Method: "GET",
+		Path:   "/TestWWWFormUrlencoded",
+		Func: func(w http.ResponseWriter, r *http.Request) {
+			testserver.Send(w, greq.HttpMessage(*r))
+		},
+	}
+	testserver.Add(data)
+	wwwForm := struct {
+		 Name string `form:"name"`
+		 Age int `form:"age"`
+	}{
+		Name: "nimo",
+		Age: 27,
+	}
+	resp := c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
+		FormUrlencoded: wwwForm,
+	})
+	as.Equal(resp.String(), formatMessage(`
+GET /TestWWWFormUrlencoded HTTP/1.1
+Host: 127.0.0.1:2421
+Accept-Encoding: gzip
+Content-Length: 16
+Content-Type: application/x-www-form-urlencoded
+User-Agent: Go-http-client/1.1
 
+age=27&name=nimo`))
+}
+
+type UploadPhoto struct {
+	File *os.File `form:"photo"`
+}
 func TestFormData(t *testing.T) {
 	as := gtest.NewAS(t)
+	_=as
 	c := greq.New(greq.Config{})
 	data := testserver.Data{
 		Method: "POST",
@@ -266,13 +288,41 @@ func TestFormData(t *testing.T) {
 	testserver.Add(data)
 	form := struct {
 		Name string `form:"name"`
-		File *os.File
+		File *os.File `form:"file"`
+		UploadPhoto
 	}{
 		Name: "nimo",
 		File: ge.File(os.OpenFile("mock/json-1.json",os.O_RDONLY,  0666)),
+		UploadPhoto: UploadPhoto{
+			ge.File(os.OpenFile("mock/json-1.json",os.O_RDONLY,  0666)),
+		},
 	}
 	resp := c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
 		FormData: form,
 	})
-	as.Equal(resp.String(), "")
+	as.Equal(formatFormDataMessage(resp.String()), formatMessage(`
+POST /TestFormData HTTP/1.1
+Host: 127.0.0.1:2421
+Accept-Encoding: gzip
+Content-Length: 654
+Content-Type: multipart/form-data; boundary=testboundarytestboundarytestboundarytestboundarytestboundary
+User-Agent: Go-http-client/1.1
+
+--testboundarytestboundarytestboundarytestboundarytestboundary
+Content-Disposition: form-data; name="name"
+
+nimo
+--testboundarytestboundarytestboundarytestboundarytestboundary
+Content-Disposition: form-data; name="file"; filename="mock/json-1.json"
+Content-Type: application/octet-stream
+
+{"name": "nimoc","github": "http://github.com/nimoc"}
+--testboundarytestboundarytestboundarytestboundarytestboundary
+Content-Disposition: form-data; name="photo"; filename="mock/json-1.json"
+Content-Type: application/octet-stream
+
+{"name": "nimoc","github": "http://github.com/nimoc"}
+--testboundarytestboundarytestboundarytestboundarytestboundary--
+`))
+
 }

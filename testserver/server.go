@@ -26,6 +26,5 @@ func Add(data Data) {
 			return
 		}
 		data.Func(writer, request)
-
 	})
 }
