@@ -7,7 +7,6 @@ import (
 	ge "github.com/og/x/error"
 	gjson "github.com/og/x/json"
 	gtest "github.com/og/x/test"
-	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"os"
@@ -45,6 +44,8 @@ func ExampleClient_Get() {
 		}
 		c.Get("http://www.github.com/", greq.Request{
 			Query: query,
+		}, greq.Response{
+
 		})
 	}
 }
@@ -54,8 +55,9 @@ func ExampleClient_Response_JSON() {
 		Name string `json:"name"`
 		Github string `json:"github"`
 	}{}
-	resp := c.Get("https://raw.githubusercontent.com/og/go-request/master/mock/json-1.json", greq.Request{})
-	resp.JSON(&data)
+	c.Get("https://raw.githubusercontent.com/og/go-request/master/mock/json-1.json", greq.Request{}, greq.Response{
+		JSON: greq.BindJSON(&data),
+	})
 }
 func ExampleClient_Post() {
 	c := greq.New(greq.Config{})
@@ -63,8 +65,9 @@ func ExampleClient_Post() {
 		Name string `json:"name"`
 		Github string `json:"github"`
 	}{}
-	resp := c.Post("https://raw.githubusercontent.com/og/go-request/master/mock/json-1.json", greq.Request{})
-	resp.JSON(&data)
+	c.Post("https://raw.githubusercontent.com/og/go-request/master/mock/json-1.json", greq.Request{}, greq.Response{
+		JSON:  greq.BindJSON(&data),
+	})
 }
 
 func TestGet(t *testing.T) {
@@ -84,20 +87,26 @@ func TestGet(t *testing.T) {
 		ID: "a",
 	}
 	{
-		resp := c.Get(url(data.Path), greq.Request{
+		var respBytes []byte
+		c.Get(url(data.Path), greq.Request{
 			Query: query,
+		}, greq.Response{
+			Bytes: greq.BindBytes(&respBytes),
 		})
-		as.Equal(resp.String(), formatMessage(`
+		as.Equal(string(respBytes), formatMessage(`
 GET /TestGet?id=a HTTP/1.1
 Host: 127.0.0.1:2421
 Accept-Encoding: gzip
 User-Agent: Go-http-client/1.1`))
 	}
 	{
-		resp := c.Post(url(data.Path), greq.Request{
+		var respBytes []byte
+		c.Post(url(data.Path), greq.Request{
 			Query: query,
+		}, greq.Response{
+			Bytes: greq.BindBytes(&respBytes),
 		})
-		as.Equal(resp.String(), "method is error: should be GET. request method is POST")
+		as.Equal(string(respBytes), "method is error: should be GET. request method is POST")
 	}
 }
 
@@ -113,10 +122,13 @@ func TestPost(t *testing.T) {
 			},
 		}
 		testserver.Add(data)
-		resp := c.Post(url(data.Path), greq.Request{
+		var respBytes []byte
+		c.Post(url(data.Path), greq.Request{
 			JSON: struct {
 				Name string `json:"name"`
 			}{Name: "nimoc"},
+		}, greq.Response{
+			Bytes: greq.BindBytes(&respBytes),
 		})
 		message := formatMessage(`
 POST /TestPost HTTP/1.1
@@ -127,10 +139,7 @@ Content-Type: application/json
 User-Agent: Go-http-client/1.1
 
 {"name":"nimoc"}`)
-		as.Equal(resp.String(), message)
-		// 测试保留 Response.Body 数据，供后续代码使用
-		as.Equal(as.NoErrorSecond(ioutil.ReadAll(resp.HttpResponse.Body)),  []byte(message))
-		as.Equal(as.NoErrorSecond(ioutil.ReadAll(resp.HttpResponse.Body)),  []byte{})
+		as.Equal(string(respBytes), message)
 	}
 }
 
@@ -141,7 +150,7 @@ func Example_CookieJar() {
 			Jar: cookieJar,
 		},
 	})
-	c.Send(greq.GET, "http://github.com", greq.Request{})
+	c.Send(greq.GET, "http://github.com", greq.Request{}, greq.Response{})
 }
 func TestGetCookieJar(t *testing.T) {
 	data := testserver.Data{
@@ -181,32 +190,49 @@ func TestGetCookieJar(t *testing.T) {
 			Jar: cookieJar,
 		},
 	})
-	as.Equal(
-		c.Send(greq.Method(data.Method),url(data.Path), greq.Request{}).String(),
-		formatMessage(`1
+	{
+		var respBytes []byte
+		c.Send(greq.Method(data.Method),url(data.Path), greq.Request{}, greq.Response{
+			Bytes: greq.BindBytes(&respBytes),
+		})
+
+		as.Equal(string(respBytes),
+			formatMessage(`1
 GET /TestGetCookieJar HTTP/1.1
 Host: 127.0.0.1:2421
 Accept-Encoding: gzip
 User-Agent: Go-http-client/1.1`),
 		)
-	as.Equal(
-		c.Send(greq.Method(data.Method),url(data.Path), greq.Request{}).String(),
-		formatMessage(`2
+	}
+	{
+		var respBytes []byte
+		c.Send(greq.Method(data.Method),url(data.Path), greq.Request{}, greq.Response{
+			Bytes: greq.BindBytes(&respBytes),
+		})
+		as.Equal(
+			string(respBytes),
+			formatMessage(`2
 GET /TestGetCookieJar HTTP/1.1
 Host: 127.0.0.1:2421
 Accept-Encoding: gzip
 Cookie: count=1
 User-Agent: Go-http-client/1.1`),
 	)
-	as.Equal(
-		c.Send(greq.Method(data.Method),url(data.Path), greq.Request{}).String(),
-		formatMessage(`3
+	}
+	{
+		var respBytes []byte
+		c.Send(greq.Method(data.Method),url(data.Path), greq.Request{}, greq.Response{
+			Bytes: greq.BindBytes(&respBytes),
+		})
+		as.Equal(string(respBytes),
+			formatMessage(`3
 GET /TestGetCookieJar HTTP/1.1
 Host: 127.0.0.1:2421
 Accept-Encoding: gzip
 Cookie: count=2
 User-Agent: Go-http-client/1.1`),
 	)
+	}
 }
 
 func TestHeader(t *testing.T) {
@@ -235,9 +261,13 @@ func TestHeader(t *testing.T) {
 		Bool: true,
 		List: []string{"a", "c"},
 	}
-	as.Equal(c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
+	var respBytes []byte
+	c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
 		Header: header,
-	}).String(), formatMessage(`{"Accept-Encoding":["gzip"],"Age":["1"],"Apikey":["password"],"Bool":["true"],"Float":["1.2"],"List":["a","c"],"User":["nimoc"],"User-Agent":["Go-http-client/1.1"]}`))
+	}, greq.Response{
+		Bytes: greq.BindBytes(&respBytes),
+	})
+	as.Equal(string(respBytes), formatMessage(`{"Accept-Encoding":["gzip"],"Age":["1"],"Apikey":["password"],"Bool":["true"],"Float":["1.2"],"List":["a","c"],"User":["nimoc"],"User-Agent":["Go-http-client/1.1"]}`))
 }
 func TestWWWFormUrlencoded(t *testing.T) {
 	as := gtest.NewAS(t)
@@ -257,10 +287,14 @@ func TestWWWFormUrlencoded(t *testing.T) {
 		Name: "nimo",
 		Age: 27,
 	}
-	resp := c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
-		FormUrlencoded: wwwForm,
-	})
-	as.Equal(resp.String(), formatMessage(`
+	{
+		var respBytes []byte
+		c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
+			FormUrlencoded: wwwForm,
+		}, greq.Response{
+			Bytes: greq.BindBytes(&respBytes),
+		})
+		as.Equal(string(respBytes), formatMessage(`
 GET /TestWWWFormUrlencoded HTTP/1.1
 Host: 127.0.0.1:2421
 Accept-Encoding: gzip
@@ -269,10 +303,35 @@ Content-Type: application/x-www-form-urlencoded
 User-Agent: Go-http-client/1.1
 
 age=27&name=nimo`))
+	}
 }
 
 type UploadPhoto struct {
 	File *os.File `form:"photo"`
+}
+func TestJSON(t *testing.T) {
+	as := gtest.NewAS(t)
+	data := testserver.Data{
+		Method: "POST",
+		Path:   "/TestJSON",
+		Func: func(w http.ResponseWriter, r *http.Request) {
+			testserver.Send(w, `{"name":"nimoc","age":18}`)
+		},
+	}
+	testserver.Add(data)
+	c := greq.New(greq.Config{})
+	type RespData struct {
+		Name string `json:"name"`
+		Age int `json:"age"`
+	}
+	var respData RespData
+	c.Send(greq.Method(data.Method), url(data.Path), greq.Request{}, greq.Response{
+		JSON:  greq.BindJSON(&respData),
+	})
+	as.Equal(respData, RespData{
+		Name: "nimoc",
+		Age: 18,
+	})
 }
 func TestFormData(t *testing.T) {
 	as := gtest.NewAS(t)
@@ -297,10 +356,13 @@ func TestFormData(t *testing.T) {
 			ge.File(os.OpenFile("mock/json-1.json",os.O_RDONLY,  0666)),
 		},
 	}
-	resp := c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
+	var respBytes []byte
+	c.Send(greq.Method(data.Method), url(data.Path), greq.Request{
 		FormData: form,
+	}, greq.Response{
+		Bytes: greq.BindBytes(&respBytes),
 	})
-	as.Equal(formatFormDataMessage(resp.String()), formatMessage(`
+	as.Equal(formatFormDataMessage(string(respBytes)), formatMessage(`
 POST /TestFormData HTTP/1.1
 Host: 127.0.0.1:2421
 Accept-Encoding: gzip

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	ge "github.com/og/x/error"
+	gjson "github.com/og/x/json"
 	core_ogjson "github.com/og/x/json/core"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -18,11 +20,11 @@ type Client struct {
 	HttpClient *http.Client
 }
 
-func (c Client) Get(URL string, request Request) (res Response) {
-	return c.Send(GET, URL, request)
+func (c Client) Get(URL string, request Request, response Response) {
+	c.Send(GET, URL, request, response)
 }
-func (c Client) Post(URL string, request Request) (res Response) {
-	return c.Send(POST, URL, request)
+func (c Client) Post(URL string, request Request, response Response) {
+	c.Send(POST, URL, request, response)
 }
 type Method string
 const GET Method = "GET"
@@ -34,7 +36,7 @@ const CONNECT Method = "CONNECT"
 const OPTIONS Method = "OPTIONS"
 const TRACE Method = "TRACE"
 const PATCH Method = "PATCH"
-func (c Client) Send(method Method, URL string, request Request) (resp Response) {
+func (c Client) Send(method Method, URL string, request Request, resp Response) {
 
 	var bodyReader io.Reader
 	if request.JSON != nil {
@@ -123,6 +125,15 @@ func (c Client) Send(method Method, URL string, request Request) (resp Response)
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
 	httpResp , err := c.HttpClient.Do(httpReq) ; ge.Check(err)
-	resp.HttpResponse = httpResp
+	defer func() {
+		ge.Check(httpResp.Body.Close())
+	}()
+	respBytes, err := ioutil.ReadAll(httpResp.Body) ; ge.Check(err)
+	if resp.Bytes.Bind {
+		*resp.Bytes.Bytes = respBytes
+	}
+	if resp.JSON.Bind {
+		gjson.ParseBytes(respBytes, resp.JSON.Value)
+	}
 	return
 }
