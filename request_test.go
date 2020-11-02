@@ -5,7 +5,7 @@ import (
 	"github.com/og/go-request/testserver"
 	gconv "github.com/og/x/conv"
 	ge "github.com/og/x/error"
-	gjson "github.com/og/x/json"
+	gjson "github.com/og/json"
 	gtest "github.com/og/x/test"
 	"net/http"
 	"net/http/cookiejar"

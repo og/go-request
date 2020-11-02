@@ -3,7 +3,7 @@ package greq
 import (
 	"fmt"
 	ge "github.com/og/x/error"
-	core_ogjson "github.com/og/x/json/core"
+	core_ogjson "github.com/og/json/core"
 	"reflect"
 )
 
