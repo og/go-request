@@ -393,3 +393,14 @@ Content-Type: application/octet-stream
 {"name": "nimoc","github": "http://github.com/nimoc"}
 --testboundarytestboundarytestboundarytestboundarytestboundary--`) + "\r\n")
 }
+
+
+type Full struct {
+	Name string
+	
+}
+func TestFull(t *testing.T) {
+	as := gtest.NewAS(t)
+	_=as
+
+}

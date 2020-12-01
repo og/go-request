@@ -27,7 +27,6 @@ type Request struct {
 	FormData RequestFormData
 	Header RequestHeader
 	JSON interface{}
-	Request *http.Request
 }
 
 func HttpMessage(r http.Request) string {
