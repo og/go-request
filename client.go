@@ -81,7 +81,7 @@ func (c Client) Send(ctx context.Context, method Method, URL string, request Req
 	}
 	if resp.JSON.Bind {
 		if err := gjson.ParseBytesWithErr(respBytes, resp.JSON.Value); err != nil  {
-			panic(errors.New(err.Error() + " source: " + string(respBytes)))
+			return errors.New(err.Error() + " source: " + string(respBytes))
 		}
 	}
 	return nil
