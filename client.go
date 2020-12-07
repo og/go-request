@@ -3,6 +3,7 @@ package greq
 import (
 	"bytes"
 	"context"
+	"errors"
 	gjson "github.com/og/json"
 	core_ogjson "github.com/og/json/core"
 	"io"
@@ -79,7 +80,9 @@ func (c Client) Send(ctx context.Context, method Method, URL string, request Req
 		*resp.Bytes.Bytes = respBytes
 	}
 	if resp.JSON.Bind {
-		gjson.ParseBytes(respBytes, resp.JSON.Value)
+		if err := gjson.ParseBytesWithErr(respBytes, resp.JSON.Value); err != nil  {
+			panic(errors.New(err.Error() + " source: " + string(respBytes)))
+		}
 	}
 	return nil
 }
