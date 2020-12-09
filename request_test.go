@@ -10,6 +10,7 @@ import (
 	ge "github.com/og/x/error"
 	gtest "github.com/og/x/test"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
@@ -64,12 +65,12 @@ func TestGet(t *testing.T) {
 	}
 	{
 		var respBytes []byte
-		err := c.Send(context.TODO(), data.Method, hosturl(data.Path), greq.Request{
+		statusCode, err := c.Send(context.TODO(), data.Method, hosturl(data.Path), greq.Request{
 			Query: query,
 		}, greq.Response{
 			Bytes: greq.BindBytes(&respBytes),
-		})
-		if err != nil { panic(err)}
+		}) ; if err != nil { panic(err)}
+		as.Equal(statusCode, 200)
 		as.Equal(string(respBytes), formatMessage(`
 GET /TestGet?id=a HTTP/1.1
 Host: 127.0.0.1:2421
@@ -77,12 +78,26 @@ Accept-Encoding: gzip
 User-Agent: Go-http-client/1.1`))
 	}
 	{
+		httpResp, statusCode, err := c.Do(context.TODO(), data.Method, hosturl(data.Path), greq.Request{
+			Query: query,
+		}) ; if err != nil { panic(err)}
+		as.Equal(statusCode, 200)
+		defer httpResp.Body.Close()
+		data ,readErr := ioutil.ReadAll(httpResp.Body) ; if readErr != nil {panic(readErr)}
+		as.Equal(string(data), formatMessage(`
+GET /TestGet?id=a HTTP/1.1
+Host: 127.0.0.1:2421
+Accept-Encoding: gzip
+User-Agent: Go-http-client/1.1`))
+	}
+	{
 		var respBytes []byte
-		err := c.Send(context.TODO(), greq.POST, hosturl(data.Path), greq.Request{
+		statusCode, err := c.Send(context.TODO(), greq.POST, hosturl(data.Path), greq.Request{
 			Query: query,
 		}, greq.Response{
 			Bytes: greq.BindBytes(&respBytes),
 		}) ; ge.Check(err)
+		as.Equal(statusCode, 200)
 		as.Equal(string(respBytes), "method is error: should be GET. request method is POST")
 	}
 }
@@ -103,11 +118,12 @@ func TestPost(t *testing.T) {
 		}
 		testserver.Add(data)
 		var respBytes []byte
-		err := c.Send(context.TODO(), greq.POST, hosturl(data.Path), greq.Request{
+		statusCode, err := c.Send(context.TODO(), greq.POST, hosturl(data.Path), greq.Request{
 			JSON: PostJSON{Name: "nimoc"},
 		}, greq.Response{
 			Bytes: greq.BindBytes(&respBytes),
 		}) ; ge.Check(err)
+		as.Equal(statusCode, 200)
 		message := formatMessage(`
 POST /TestPost HTTP/1.1
 Host: 127.0.0.1:2421
@@ -238,12 +254,13 @@ func TestHeader(t *testing.T) {
 		List: []string{"a", "c"},
 	}
 	var respBytes []byte
-	err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
+	statusCode, err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
 		Header: header,
 	}, greq.Response{
 		Bytes: greq.BindBytes(&respBytes),
 	})
 	ge.Check(err)
+	as.Equal(statusCode, 200)
 	as.Equal(string(respBytes), formatMessage(`{"Accept-Encoding":["gzip"],"Apikey":["password"],"User":["nimoc"],"User-Agent":["Go-http-client/1.1"]}`))
 }
 type WWWForm struct {
@@ -273,12 +290,13 @@ func TestWWWFormUrlencoded(t *testing.T) {
 	}
 	{
 		var respBytes []byte
-		err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
+		statusCode, err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
 			FormUrlencoded: wwwForm,
 		}, greq.Response{
 			Bytes: greq.BindBytes(&respBytes),
 		})
 		as.NoError(err)
+		as.Equal(statusCode, 200)
 		as.Equal(string(respBytes), formatMessage(`
 GET /TestWWWFormUrlencoded HTTP/1.1
 Host: 127.0.0.1:2421
@@ -308,9 +326,11 @@ func TestJSON(t *testing.T) {
 		Age int `json:"age"`
 	}
 	var respData RespData
-	c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{}, greq.Response{
+	statusCode, err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{}, greq.Response{
 		JSON:  greq.BindJSON(&respData),
 	})
+	as.NoError(err)
+	as.Equal(statusCode, 200)
 	as.Equal(respData, RespData{
 		Name: "nimoc",
 		Age: 18,
@@ -364,11 +384,12 @@ func TestFormData(t *testing.T) {
 		},
 	}
 	var respBytes []byte
-	err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
+	statusCode, err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
 		FormData: form,
 	}, greq.Response{
 		Bytes: greq.BindBytes(&respBytes),
 	}) ; ge.Check(err)
+	as.Equal(statusCode, 200)
 	as.Equal(formatFormDataMessage(string(respBytes)), formatMessage(`
 POST /TestFormData HTTP/1.1
 Host: 127.0.0.1:2421
@@ -394,13 +415,3 @@ Content-Type: application/octet-stream
 --testboundarytestboundarytestboundarytestboundarytestboundary--`) + "\r\n")
 }
 
-
-type Full struct {
-	Name string
-	
-}
-func TestFull(t *testing.T) {
-	as := gtest.NewAS(t)
-	_=as
-
-}
