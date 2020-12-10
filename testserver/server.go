@@ -23,6 +23,7 @@ func Run () {
 func Add(data Data) {
 	http.HandleFunc(data.Path, func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != data.Method.String() {
+			writer.WriteHeader(405)
 			Send(writer, "method is error: should be " + data.Method.String() + ". request method is " + request.Method)
 			return
 		}

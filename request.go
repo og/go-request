@@ -26,7 +26,7 @@ type Request struct {
 	FormUrlencoded RequestFormUrlencoded
 	FormData RequestFormData
 	Header RequestHeader
-	JSON interface{}
+	JSON []byte
 }
 
 func HttpMessage(r http.Request) string {

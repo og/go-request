@@ -3,12 +3,14 @@ package greq_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	greq "github.com/og/go-request"
 	"github.com/og/go-request/testserver"
-	gjson "github.com/og/json"
 	gconv "github.com/og/x/conv"
 	ge "github.com/og/x/error"
 	gtest "github.com/og/x/test"
+	"github.com/og/xjson"
 	"io"
 	"io/ioutil"
 	"mime/multipart"
@@ -22,6 +24,13 @@ import (
 	"testing"
 	"time"
 )
+func readBytes(resp *http.Response) ([]byte, error) {
+	if resp == nil {
+		return nil, errors.New("http.Response is nil")
+	}
+	defer resp.Body.Close()
+	return ioutil.ReadAll(resp.Body)
+}
 
 func init () {
 	go testserver.Run()
@@ -65,12 +74,12 @@ func TestGet(t *testing.T) {
 	}
 	{
 		var respBytes []byte
-		statusCode, err := c.Send(context.TODO(), data.Method, hosturl(data.Path), greq.Request{
+		resp, statusCode, err := c.Do(context.TODO(), data.Method, hosturl(data.Path), greq.Request{
 			Query: query,
-		}, greq.Response{
-			Bytes: greq.BindBytes(&respBytes),
 		}) ; if err != nil { panic(err)}
 		as.Equal(statusCode, 200)
+		defer resp.Body.Close()
+		respBytes, err = ioutil.ReadAll(resp.Body) ; if err != nil {panic(err)}
 		as.Equal(string(respBytes), formatMessage(`
 GET /TestGet?id=a HTTP/1.1
 Host: 127.0.0.1:2421
@@ -78,28 +87,27 @@ Accept-Encoding: gzip
 User-Agent: Go-http-client/1.1`))
 	}
 	{
-		httpResp, statusCode, err := c.Do(context.TODO(), data.Method, hosturl(data.Path), greq.Request{
-			Query: query,
-		}) ; if err != nil { panic(err)}
-		as.Equal(statusCode, 200)
-		defer httpResp.Body.Close()
-		data ,readErr := ioutil.ReadAll(httpResp.Body) ; if readErr != nil {panic(readErr)}
-		as.Equal(string(data), formatMessage(`
-GET /TestGet?id=a HTTP/1.1
-Host: 127.0.0.1:2421
-Accept-Encoding: gzip
-User-Agent: Go-http-client/1.1`))
-	}
-	{
 		var respBytes []byte
-		statusCode, err := c.Send(context.TODO(), greq.POST, hosturl(data.Path), greq.Request{
+		resp,  statusCode, err := c.Do(context.TODO(), greq.POST, hosturl(data.Path), greq.Request{
 			Query: query,
-		}, greq.Response{
-			Bytes: greq.BindBytes(&respBytes),
 		}) ; ge.Check(err)
-		as.Equal(statusCode, 200)
+		defer resp.Body.Close()
+		respBytes, err = ioutil.ReadAll(resp.Body) ; if err != nil {panic(err)}
+		as.Equal(statusCode, 405)
 		as.Equal(string(respBytes), "method is error: should be GET. request method is POST")
 	}
+	// {
+	// 	resp,  statusCode, err := c.Do(context.TODO(), greq.POST, "http://www.notfounddomainasdjasdasdasd3fn.com/asdasd", greq.Request{
+	// 		Query: query,
+	// 	})
+	// 	// 应该先写 err != nil 再处理 Close，这里这样写是为了测试防御措施 Do 内部实现的防御措施
+	// 	if err != nil {
+	// 		// 故意遇到错误不 panic 用于测试
+	// 	}
+	// 	defer resp.Body.Close()
+	// 	as.Equal(statusCode, 0)
+	//
+	// }
 }
 
 type PostJSON struct {
@@ -118,11 +126,11 @@ func TestPost(t *testing.T) {
 		}
 		testserver.Add(data)
 		var respBytes []byte
-		statusCode, err := c.Send(context.TODO(), greq.POST, hosturl(data.Path), greq.Request{
-			JSON: PostJSON{Name: "nimoc"},
-		}, greq.Response{
-			Bytes: greq.BindBytes(&respBytes),
+		resp, statusCode, err := c.Do(context.TODO(), greq.POST, hosturl(data.Path), greq.Request{
+			JSON: ,
 		}) ; ge.Check(err)
+		defer  resp.Body.Close()
+		respBytes, err = ioutil.ReadAll(resp.Body) ;ge.Check(err)
 		as.Equal(statusCode, 200)
 		message := formatMessage(`
 POST /TestPost HTTP/1.1
@@ -177,10 +185,9 @@ func TestGetCookieJar(t *testing.T) {
 	})
 	{
 		var respBytes []byte
-		c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{}, greq.Response{
-			Bytes: greq.BindBytes(&respBytes),
-		})
-
+		resp, statusCode, err := c.Do(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{}) ;ge.Check(err)
+		as.Equal(statusCode, 200)
+		respBytes, err = readBytes(resp) ; ge.Check(err)
 		as.Equal(string(respBytes),
 			formatMessage(`1
 GET /TestGetCookieJar HTTP/1.1
@@ -191,9 +198,9 @@ User-Agent: Go-http-client/1.1`),
 	}
 	{
 		var respBytes []byte
-		c.Send(context.TODO(), greq.Method(data.Method),hosturl(data.Path), greq.Request{}, greq.Response{
-			Bytes: greq.BindBytes(&respBytes),
-		})
+		resp, statusCode, err := c.Do(context.TODO(), greq.Method(data.Method),hosturl(data.Path), greq.Request{}) ; ge.Check(err)
+		as.Equal(statusCode, 200)
+		respBytes, err = readBytes(resp) ; ge.Check(err)
 		as.Equal(
 			string(respBytes),
 			formatMessage(`2
@@ -206,9 +213,9 @@ User-Agent: Go-http-client/1.1`),
 	}
 	{
 		var respBytes []byte
-		c.Send(context.TODO(), greq.Method(data.Method),hosturl(data.Path), greq.Request{}, greq.Response{
-			Bytes: greq.BindBytes(&respBytes),
-		})
+		resp, statusCode, err := c.Do(context.TODO(), greq.Method(data.Method),hosturl(data.Path), greq.Request{}) ; ge.Check(err)
+		as.Equal(statusCode, 200)
+		respBytes, err = readBytes(resp) ;ge.Check(err)
 		as.Equal(string(respBytes),
 			formatMessage(`3
 GET /TestGetCookieJar HTTP/1.1
@@ -241,7 +248,8 @@ func TestHeader(t *testing.T) {
 		Method: "GET",
 		Path:   "/TestHeader",
 		Func: func(w http.ResponseWriter, r *http.Request) {
-			testserver.Send(w, gjson.String(r.Header))
+			data, err := xjson.Marshal(r.Header) ; if err != nil {w.Write([]byte(err.Error()))}
+			testserver.Send(w, string(data))
 		},
 	}
 	testserver.Add(data)
@@ -254,11 +262,10 @@ func TestHeader(t *testing.T) {
 		List: []string{"a", "c"},
 	}
 	var respBytes []byte
-	statusCode, err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
+	resp, statusCode, err := c.Do(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
 		Header: header,
-	}, greq.Response{
-		Bytes: greq.BindBytes(&respBytes),
 	})
+	respBytes, err = readBytes(resp) ;ge.Check(err)
 	ge.Check(err)
 	as.Equal(statusCode, 200)
 	as.Equal(string(respBytes), formatMessage(`{"Accept-Encoding":["gzip"],"Apikey":["password"],"User":["nimoc"],"User-Agent":["Go-http-client/1.1"]}`))
@@ -290,11 +297,10 @@ func TestWWWFormUrlencoded(t *testing.T) {
 	}
 	{
 		var respBytes []byte
-		statusCode, err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
+		resp, statusCode, err := c.Do(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
 			FormUrlencoded: wwwForm,
-		}, greq.Response{
-			Bytes: greq.BindBytes(&respBytes),
 		})
+		respBytes, err = readBytes(resp) ;ge.Check(err)
 		as.NoError(err)
 		as.Equal(statusCode, 200)
 		as.Equal(string(respBytes), formatMessage(`
@@ -326,10 +332,9 @@ func TestJSON(t *testing.T) {
 		Age int `json:"age"`
 	}
 	var respData RespData
-	statusCode, err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{}, greq.Response{
-		JSON:  greq.BindJSON(&respData),
-	})
-	as.NoError(err)
+	resp, statusCode, err := c.Do(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{}) ;as.NoError(err)
+	defer resp.Body.Close()
+	as.NoError(json.NewDecoder(resp.Body).Decode(&respData))
 	as.Equal(statusCode, 200)
 	as.Equal(respData, RespData{
 		Name: "nimoc",
@@ -384,11 +389,10 @@ func TestFormData(t *testing.T) {
 		},
 	}
 	var respBytes []byte
-	statusCode, err := c.Send(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
+	resp, statusCode, err := c.Do(context.TODO(), greq.Method(data.Method), hosturl(data.Path), greq.Request{
 		FormData: form,
-	}, greq.Response{
-		Bytes: greq.BindBytes(&respBytes),
 	}) ; ge.Check(err)
+	respBytes, err = readBytes(resp) ;ge.Check(err)
 	as.Equal(statusCode, 200)
 	as.Equal(formatFormDataMessage(string(respBytes)), formatMessage(`
 POST /TestFormData HTTP/1.1
